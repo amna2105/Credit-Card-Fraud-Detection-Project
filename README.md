@@ -1,65 +1,77 @@
 # Credit Card Fraud Detection
 
-A machine learning project that detects fraudulent credit card transactions in a highly imbalanced dataset (fraud makes up only ~0.17% of transactions).
+In this dataset, only about 0.17% of transactions are fraud. That means a model that says "not fraud" every time is 99.8% accurate and catches nothing. I built this project to see how to deal with that problem properly.
 
-## Overview
+The whole analysis is in one notebook: [credit_card_fraud_detection.ipynb](./credit_card_fraud_detection.ipynb)
 
-This project walks through the full workflow of building a fraud-detection classifier:
+## The data
 
-- Exploratory data analysis on transaction patterns and class imbalance
-- A naive baseline model, and why accuracy is the wrong metric for this problem
-- Handling imbalance with **SMOTE** (oversampling) and **Random Undersampling**
-- Comparing **Random Forest** vs **XGBoost**
-- **Threshold tuning** to control the precision/recall trade-off
+I used the [Credit Card Fraud Detection dataset](https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud) from Kaggle. It has 284,807 transactions from European cardholders, and only 492 of them are fraud. The columns `V1` to `V28` are anonymized, and `Time` and `Amount` are the original values.
 
-📓 **[View the full notebook](./credit_card_fraud_detection.ipynb)**
+![Class balance](figures/class_balance.png)
 
-## Dataset
+The file is about 150 MB, so I didn't upload it. To run the notebook, download `creditcard.csv` from Kaggle and put it in the project folder.
 
-[Credit Card Fraud Detection](https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud) (Kaggle) — 284,807 European cardholder transactions from September 2013. Features `V1`–`V28` are anonymized via PCA; `Time` and `Amount` are raw.
+## What I did
 
-> The dataset (~150 MB) is **not included** in this repo due to size. Download it from Kaggle and place `creditcard.csv` in the project root before running the notebook.
+1. Looked at the data and how imbalanced it is
+2. Split it once (stratified) so every model is tested on the same data
+3. Trained a baseline Random Forest with `class_weight="balanced"`
+4. Tried two ways of fixing the imbalance on the training data only: **SMOTE** (creates synthetic fraud examples) and **random undersampling** (throws away most normal ones)
+5. Trained XGBoost on the SMOTE data
+6. Picked a better decision threshold using cross-validation on the training data, then checked it once on the test set
 
-## Results Summary
+## Results
 
-| Model | Resampling | Recall (Fraud) | Precision (Fraud) |
-|---|---|---|---|
-| Random Forest (baseline) | None | Moderate | Low |
-| Random Forest | SMOTE | 0.88 | 0.60 |
-| Random Forest | Random Undersampling | 0.92 | 0.04 |
-| **XGBoost** | SMOTE | **0.89** | **0.53** |
+All numbers are for the fraud class on the test set (98 fraud cases out of 56,962 transactions).
 
-XGBoost with SMOTE-resampled training data gave the strongest overall precision/recall balance. See the notebook for the full analysis and a threshold-tuning walkthrough.
+| Model | Recall | Precision | F1 | PR-AUC |
+|---|---|---|---|---|
+| Random Forest baseline | 0.85 | 0.71 | 0.77 | 0.82 |
+| Random Forest + SMOTE | 0.88 | 0.60 | 0.71 | 0.79 |
+| Random Forest + undersampling | 0.92 | 0.04 | 0.08 | 0.68 |
+| XGBoost + SMOTE | 0.89 | 0.53 | 0.66 | **0.86** |
+| **Random Forest + SMOTE, tuned threshold (0.76)** | 0.81 | 0.80 | **0.80** | 0.79 |
 
-## Tech Stack
+![Precision-recall curves](figures/pr_curves.png)
 
-`Python` · `pandas` · `numpy` · `scikit-learn` · `imbalanced-learn` · `XGBoost` · `matplotlib` · `seaborn`
+What stood out:
 
-## Setup
+- **Tuning the threshold helped the most.** With the default 0.5 cutoff, Random Forest + SMOTE gave too many false alarms. At 0.76 it caught 79 of the 98 frauds with about 20 false alarms.
+- **Undersampling was a bad idea here.** It caught the most fraud (0.92 recall), but about 96% of its alerts were false alarms.
+- **The plain baseline was already strong.** SMOTE didn't beat it on F1 unless I also tuned the threshold.
+- **XGBoost had the best PR-AUC (0.86)**, but I only tested it at the default threshold, so its F1 looks lower than it might be.
+
+![Threshold tuning](figures/threshold_tuning.png)
+
+One thing to keep in mind: the test set has only 98 fraud cases, so one extra catch changes recall by about 0.01. The gaps between the top models are small and could easily change with a different split.
+
+## What I learned
+
+- Accuracy is useless on data like this. Recall, precision, F1 and PR-AUC tell you what is going on.
+- Always train a simple baseline first. Mine turned out to be hard to beat.
+- The threshold is a business choice: how bad is a missed fraud compared with a false alarm?
+- Choose the threshold on training data, not on the test set, or the score looks better than it really is.
+
+## Run it yourself
 
 ```bash
-git clone https://github.com/<your-username>/credit-card-fraud-detection.git
-cd credit-card-fraud-detection
+git clone https://github.com/amna2105/Credit-Card-Fraud-Detection-Project.git
+cd Credit-Card-Fraud-Detection-Project
 pip install -r requirements.txt
 ```
 
-Download `creditcard.csv` from [Kaggle](https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud) into the project root, then open `credit_card_fraud_detection.ipynb` in Jupyter.
+Add `creditcard.csv` to the folder, then open the notebook in Jupyter and run all cells.
 
-## Key Learnings
+Built with Python, pandas, NumPy, scikit-learn, imbalanced-learn, XGBoost, matplotlib and seaborn.
 
-- Accuracy is misleading on imbalanced data — a model predicting "not fraud" every time scores 99.8% accuracy while catching zero fraud.
-- Resampling strategy matters: SMOTE preserved more information than undersampling and produced a better precision/recall balance.
-- Gradient boosting (XGBoost) outperformed Random Forest on this tabular data.
-- Threshold tuning is a cheap way to adapt a trained model to different business cost trade-offs without retraining.
+## What I'd do next
 
-## Future Improvements
+- Tune the threshold for XGBoost too
+- Cross-validate every model instead of relying on one split
+- Try ADASYN or SMOTE + Tomek links
+- Put the best model behind a small prediction API
 
-- Try `SMOTE + Tomek Links` or `ADASYN`
-- Hyperparameter tuning with cross-validation
-- Threshold tuning for the XGBoost model
-- Precision-recall and ROC-AUC curves
-- Wrap the best model behind a simple prediction API
+## Credit
 
-## Acknowledgements
-
-Base approach adapted from a [GeeksforGeeks](https://www.geeksforgeeks.org/) tutorial, extended with stratified resampling, XGBoost, and threshold tuning.
+The starting point was a GeeksforGeeks tutorial. I added the undersampling comparison, XGBoost, the stratified split, and the threshold tuning.
